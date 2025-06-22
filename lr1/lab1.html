@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>AR Scanner</title>
+
+      <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.1.4/dist/mindar-image.prod.js"></script>
+      <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.1.4/dist/mindar-image-aframe.prod.js"></script>
+
+      <style>
+            body, html {
+                  margin: 0;
+                  padding: 0;
+                  height: 100%;
+                   overflow: hidden;
+                  background-color: transparent;
+            }
+
+            #scanner-ui {
+                  position: absolute;
+                  top: 0;
+                  left: 0;
+                  width: 100%;
+                  height: 100%;
+                  display: flex;
+                  flex-direction: column;
+                  justify-content: center;
+                  align-items: center;
+                  background: rgba(0, 0, 0, 0.4);
+                  z-index: 5;
+                  pointer-events: none;
+            }
+
+            .scanner-inner {
+                  border: 4px dashed #00ff00;
+                  padding: 16px;
+                  background: rgba(0, 0, 0, 0.6);
+                  text-align: center;
+                  border-radius: 12px;
+            }
+
+            .scanner-inner img {
+                  max-width: 80%;
+                  border: 2px solid white;
+            }
+
+            .scanline {
+                  position: relative;
+                  width: 100%;
+                  height: 2px;
+                  background: lime;
+                  animation: scanline-move 2s infinite linear;
+                  margin-top: 10px;
+            }
+
+            @keyframes scanline-move {
+                  0% { transform: translateY(0); }
+                  100% { transform: translateY(100%); }
+            }
+      </style>
+</head>
+<body>
+      >
+      <audio id="gif-audio" src="audio.mp3" preload="auto"></audio>
+  
+      <div id="scanner-ui">
+            <div class="scanner-inner">
+      
+                  <div class="scanline"></div>
+                  <img src="markers.jpg" alt="Скануй цей маркер" style="max-width: 80%; border: 2px solid white; opacity: 0.5;" />
+
+            </div>
+      </div>
+  
+     <a-scene
+            mindar-image="imageTargetSrc: marker.mind; filterMinCF: 0.001; filterBeta: 0.09;"
+            embedded
+            color-space="sRGB"
+            renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true"
+            vr-mode-ui="enabled: false"
+            device-orientation-permission-ui="enabled: false"
+      >
+      <a-assets>
+            <img id="perfil" src="fest.png" />
+            <img id="businessCard" src="markers.jpg" />
+            <img id="icon_linkedin" src="assets/images/icons/icon_youtube.png" />
+            <img id="icon_web" src="assets/images/icons/icon_web.png" />
+            <img id="icon_switch" src="assets/images/icons/right.png" />
+            <img id="icon_switch_right" src="assets/images/icons/left.png" />
+            <a-asset-item id="model_cake" src="cake.glb"></a-asset-item>
+            <video id="local-video" src="video.mp4" preload="auto" loop crossorigin="anonymous" playsinline muted></video>
+            <video id="gif-video" src="gif.mp4" preload="auto" loop crossorigin="anonymous" playsinline muted></video>
+      </a-assets>
+
+      <a-camera
+            position="0 0 1.5"
+            look-controls="enabled: false"
+            cursor="fuse: false; rayOrigin: mouse"
+            raycaster="far: 10000; objects: .clickable"
+      ></a-camera>
+    
+      <a-entity mindar-image-target="targetIndex: 0">
+            <a-image id="card" position="0 0 -0.01" height="0.9" width="1.5" src="#businessCard"></a-image>
+            <a-image id="foto-perfil" src="#perfil" position="0 -0.4 0.01" height="0.75" width="0.95" visible="true"></a-image>
+            <a-gltf-model id="cake-model" src="#model_cake" position="0 -0.4 0.02" scale="0.5 0.5 0.5" visible="false"
+                  animation="property: rotation; to: 0 360 0; loop: true; dur: 8000; easing: linear"></a-gltf-model>
+            <a-video id="local-video-element" src="#local-video" position="0 -0.4 0.01" width="1.2" height="0.45" visible="false"></a-video>
+            <a-video id="gif-video-element" src="#gif-video" position="0 -0.4 0.01" width="0.9" height="0.4" visible="false"></a-video>
+      
+            <a-image id="toggle-button" class="clickable" position="0.35 -0.7 0.01" width="0.15" height="0.15" src="#icon_switch"></a-image>
+            <a-image id="toggle-back-button" class="clickable" position="-0.35 -0.7 0.01" width="0.15" height="0.15" src="#icon_switch_right"></a-image>
+      
+            <a-entity position="0 -1 0.01">
+                  <a-image class="clickable" position="-0.15 0 0" height="0.12" width="0.12" src="#icon_linkedin"></a-image>
+                  <a-image class="clickable" position="0.15 0 0" height="0.12" width="0.12" src="#icon_web"></a-image>
+            </a-entity>
+      </a-entity>
+     </a-scene>
+
+     <script>
+      document.addEventListener("DOMContentLoaded", () => {
+            const fotoPerfil = document.querySelector("#foto-perfil");
+            const cakeModel = document.querySelector("#cake-model");
+            const video = document.querySelector("#local-video-element");
+            const gif = document.querySelector("#gif-video-element");
+            const gifAudio = document.querySelector("#gif-audio");
+
+            const realVideo = document.querySelector("#local-video");
+            const gifVideo = document.querySelector("#gif-video");
+
+            const toggleForward = document.querySelector("#toggle-button");
+            const toggleBack = document.querySelector("#toggle-back-button");
+
+            let state = 0;
+            let userInteracted = false;
+
+            const updateVisibility = () => {
+                  fotoPerfil.setAttribute("visible", state === 0);
+                  cakeModel.setAttribute("visible", state === 1);
+                  video.setAttribute("visible", state === 2);
+                  gif.setAttribute("visible", state === 3);
+
+                  if (state === 2) realVideo.play(); else realVideo.pause();
+                  if (state === 3) {
+                        gifVideo.play();
+                        if (userInteracted) gifAudio.play();
+                  } else {
+                        gifVideo.pause();
+                        gifAudio.pause();
+                        gifAudio.currentTime = 0;
+                  }
+            };
+
+            toggleForward.addEventListener("click", () => {
+                  userInteracted = true;
+                  state = (state + 1) % 4;
+                  updateVisibility();
+            });
+
+            toggleBack.addEventListener("click", () => {
+                  userInteracted = true;
+                  state = (state - 1 + 4) % 4;
+                  updateVisibility();
+            });
+
+            updateVisibility();
+
+            const scene = document.querySelector('a-scene');
+            scene.addEventListener('targetFound', () => {
+                  document.getElementById('scanner-ui').style.display = 'none';
+            });
+
+            const btnLinkedin = document.querySelector('a-image[src="#icon_linkedin"]');
+            const btnWebsite = document.querySelector('a-image[src="#icon_web"]');
+
+            if (btnLinkedin) btnLinkedin.addEventListener('click', () => window.open('https://youtu.be/9bhnBFKMWLA', '_blank'));
+            if (btnWebsite) btnWebsite.addEventListener('click', () => window.open('https://pin.it/13TMQeDKw', '_blank'));
+      });
+     </script>
+</body>
+</html>

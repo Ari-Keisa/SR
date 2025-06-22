@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+	<title>Відео з кнопками в Three.js</title>
+	<style>
+		html, body {
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+			background: black;
+		}
+		#scene-container {
+			width: 100vw;
+			height: 100vh;
+		}
+		canvas {
+			display: block;
+		}
+		.controls {
+			position: absolute;
+			bottom: 20px;
+			left: 50%;
+			transform: translateX(-50%);
+			z-index: 1;
+		}
+		button {
+			background: rgba(255,255,255,0.1);
+			border: 1px solid #ccc;
+			color: white;
+			font-size: 16px;
+			padding: 10px 20px;
+			margin: 0 5px;
+			cursor: pointer;
+		}
+		button:hover {
+			background: rgba(255,255,255,0.3);
+		}
+	</style>
+</head>
+<body>
+	<div id="scene-container"></div>
+	<div class="controls">
+		<button onclick="video.play()">▶️ Play</button>
+		<button onclick="video.pause()">⏸️ Pause</button>
+	</div>
+
+	<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+	<script>
+		const scene = new THREE.Scene();
+		const camera = new THREE.PerspectiveCamera(
+			75,
+			window.innerWidth / window.innerHeight,
+			0.1,
+			1000
+		);
+
+		const renderer = new THREE.WebGLRenderer({ antialias: true });
+		renderer.setSize(window.innerWidth, window.innerHeight);
+		document.getElementById("scene-container").appendChild(renderer.domElement);
+    
+		window.video = document.createElement("video"); 
+		video.src = "video.mp4";
+		video.muted = false;
+		video.loop = true;
+		video.autoplay = true;
+		video.playsInline = true;
+		video.preload = "auto";
+		video.play();
+
+		const texture = new THREE.VideoTexture(video);
+		const geometry = new THREE.PlaneGeometry(12, 6.25); // 16:9
+		const material = new THREE.MeshBasicMaterial({ map: texture });
+		const plane = new THREE.Mesh(geometry, material);
+		scene.add(plane);
+
+		camera.position.z = 5;
+
+		function animate() {
+			requestAnimationFrame(animate);
+			renderer.render(scene, camera);
+		}
+
+		animate();
+
+		window.addEventListener("resize", () => {
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+			renderer.setSize(window.innerWidth, window.innerHeight);
+		});
+	</script>
+</body>
+</html>
