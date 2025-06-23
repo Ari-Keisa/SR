@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Розпізнавання віку та статі</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      background: #111;
+      overflow: hidden;
+    }
+    #container {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #video, #overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      z-index: 1;
+    }
+    #status {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      padding: 10px 24px;
+      border-radius: 12px;
+      font-size: 1.2em;
+      z-index: 10;
+      letter-spacing: 1px;
+      box-shadow: 0 2px 12px #0008;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="overlay"></canvas>
+    <div id="status">Завантаження моделей...</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
+  <script>
+    const video = document.getElementById('video');
+    const overlay = document.getElementById('overlay');
+    const context = overlay.getContext('2d');
+    const status = document.getElementById('status');
+
+    let lastDetection = null;
+    let lastDetectionTime = 0;
+    const detectionTimeout = 2000; // 2 секунди
+
+    async function loadModels() {
+      const modelPath = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+      await faceapi.nets.tinyFaceDetector.loadFromUri(modelPath);
+      await faceapi.nets.ageGenderNet.loadFromUri(modelPath);
+    }
+
+    async function startVideo() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "user",
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        });
+        video.srcObject = stream;
+        status.textContent = "Запуск камери...";
+        video.onloadedmetadata = () => {
+          video.play();
+        };
+      } catch (err) {
+        status.textContent = "Не вдалося отримати доступ до камери 😢";
+        console.error(err);
+      }
+    }
+
+    function resizeElements() {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      video.width = width;
+      video.height = height;
+      overlay.width = width;
+      overlay.height = height;
+    }
+
+    window.addEventListener('resize', resizeElements);
+
+    video.addEventListener('loadeddata', () => {
+      resizeElements();
+      status.textContent = "Розпізнавання обличчя...";
+      const displaySize = { width: video.width, height: video.height };
+      faceapi.matchDimensions(overlay, displaySize);
+
+      async function detect() {
+        if (video.paused || video.ended) return;
+        const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+          .withAgeAndGender();
+
+        context.clearRect(0, 0, overlay.width, overlay.height);
+
+        const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+        if (resizedDetections.length === 0) {
+          // Якщо не знайдено, але є попередній label — показуємо його ще 2 сек
+          if (lastDetection && Date.now() - lastDetectionTime < detectionTimeout) {
+            drawDetection(lastDetection);
+            status.textContent = "";
+          } else {
+            status.textContent = "Обличчя не знайдено";
+          }
+        } else {
+          // Показуємо новий label і зберігаємо його
+          lastDetection = resizedDetections[0];
+          lastDetectionTime = Date.now();
+          drawDetection(lastDetection);
+          status.textContent = "";
+        }
+
+        requestAnimationFrame(detect);
+      }
+
+      function drawDetection(detection) {
+        const age = detection.age;
+        const gender = detection.gender;
+        const genderProbability = detection.genderProbability;
+        const box = detection.detection.box;
+
+        context.strokeStyle = 'rgba(0,255,128,0.9)';
+        context.lineWidth = 3;
+        context.strokeRect(box.x, box.y, box.width, box.height);
+
+        const label = `${gender === 'male' ? 'Чоловік' : 'Жінка'} (${Math.round(genderProbability * 100)}%), Вік: ${Math.round(age)}`;
+        context.font = 'bold 22px Segoe UI, Arial';
+        context.fillStyle = 'rgba(0,0,0,0.6)';
+        context.fillRect(box.x, box.y - 32, context.measureText(label).width + 20, 30);
+        context.fillStyle = '#00ff80';
+        context.fillText(label, box.x + 10, box.y - 10);
+      }
+
+      detect();
+    });
+
+    loadModels().then(() => {
+      status.textContent = "Моделі завантажено!";
+      startVideo();
+    });
+  </script>
+</body>
+</html>
