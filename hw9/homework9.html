@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+     <meta name="viewport" content="width=device-width, initial-scale=1" />
+     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-aframe.prod.js"></script>
+     <style>
+          body {
+               margin: 0;
+          }
+          .example-container {
+               overflow: hidden;
+               position: absolute;
+               width: 100%;
+               height: 100%;
+          }
+     </style>
+</head>
+<body>
+     <div class="example-container">
+          <a-scene mindar-face embedded color-space="sRGB"
+               renderer="colorManagement: true, physicallyCorrectLights"
+               vr-mode-ui="enabled: false"
+               device-orientation-permission-ui="enabled: false">
+
+               <a-assets>
+                    <a-asset-item id="hatModel" src="cap.glb"></a-asset-item>
+               </a-assets>
+
+               <a-camera active="false" position="0 0 0"></a-camera>
+
+               <a-entity mindar-face-target="anchorIndex: 10">
+                    <a-gltf-model 
+                         src="#hatModel" 
+                         position="0 0.8 -1"
+                         rotation="0 0 0"
+                         scale="0.39 0.39 0.39"
+                         visible="true">
+                    </a-gltf-model>
+               </a-entity>
+          </a-scene>
+     </div>
+</body>
+</html>
