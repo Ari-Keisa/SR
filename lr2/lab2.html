@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Miraculous Try-On</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>
+        :root {
+            --button-size: 60px;
+            --control-panel-bg: rgba(0, 0, 0, 0.6);
+            --active-color: #00bcd4;
+        }
+        body { margin: 0; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        #container { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+        #buttons-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            background: var(--control-panel-bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .char-button {
+            width: var(--button-size);
+            height: var(--button-size);
+            border-radius: 50%;
+            border: 3px solid white;
+            padding: 0;
+            background-size: cover;
+            background-position: center;
+            cursor: pointer;
+            transition: transform 0.2s, border-color 0.2s;
+            flex-shrink: 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        .char-button:hover { transform: scale(1.1); }
+        .char-button.active { border-color: var(--active-color); transform: scale(1.15); }
+
+        #right-panel {
+            position: absolute;
+            top: 50%;
+            right: 15px;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            z-index: 10;
+        }
+        #share-button {
+            width: 50px;
+            height: 50px;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M4 4h3l2-2h6l2 2h3v2H4V4zm16 4h-2.17l-1.21-1.83A2.993 2.993 0 0013.92 5H9.08c-1.16 0-2.19.66-2.69 1.67L5.17 8H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-8 12c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/><path d="M12 13c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>');
+            background-color: var(--active-color);
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: 60%;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        #controls-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: var(--control-panel-bg);
+            padding: 10px;
+            border-radius: 10px;
+        }
+        .control-button {
+            padding: 10px;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        .control-button.active { background: var(--active-color); color: white; border-color: var(--active-color); }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div id="right-panel">
+        <button id="share-button" title="Поділитися результатом"></button>
+        <div id="controls-container"></div>
+    </div>
+    <div id="buttons-container"></div>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "mindar-face-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-three.prod.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { MindARThree } from 'mindar-face-three';
+
+        const characters = [
+            { id: 1, name: 'Ladybug', accessoryType: 'earrings'},
+            { id: 2, name: 'Cat Noir', accessoryType: 'ears'},
+            { id: 3, name: 'Rena Rouge', accessoryType: 'talisman'},
+            { id: 4, name: 'Carapace', accessoryType: 'hood'},
+            { id: 5, name: 'Viperion', accessoryType: 'side-object'},
+            { id: 6, name: 'Monarch', accessoryType: 'talisman'},
+            { id: 7, name: 'Bunnix', accessoryType: 'ears'},
+            { id: 8, name: 'Queen Bee', accessoryType: 'brooch'},
+            { id: 9, name: 'Ryuko', accessoryType: 'ears'},
+            { id: 10, name: 'Multimouse', accessoryType: 'ears'},
+            { id: 11, name: 'Alix', accessoryType: 'hood'},
+        ];
+
+        const accessoryFileMap = {
+            1: '1serejki.png', 2: '2yski.png', 3: '3talisman.png', 4: '4kapyshon.png', 5: '5arfa.png',
+            6: '6talisman.png', 7: '7yski.png', 8: '8brosh.png', 9: '9yski.png', 10: '10yski.png', 11: '11kapyshon.png'
+        };
+
+        // Параметри для квамі та доп (можеш підбирати для кожного персонажа)
+        const kwamiParams = {
+            1: { offset: [0.45, 0.25, 0], scale: 0.35 },
+            2: { offset: [0.45, 0.25, 0], scale: 0.35 },
+            // ... для інших персонажів
+        };
+        const dopParams = {
+            1: { anchor: 152, offset: [0, -0.25, 0], scale: 0.3 }, // напр. сережки
+            2: { anchor: 10, offset: [0, 0.18, 0], scale: 0.5 },   // напр. вушка
+            // ... для інших персонажів
+        };
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const mindarThree = new MindARThree({ container: document.querySelector("#container") });
+            const { renderer, scene, camera } = mindarThree;
+            scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1));
+            const textureLoader = new THREE.TextureLoader();
+
+            // Маска
+            const faceMesh = mindarThree.addFaceMesh();
+            const faceMaskMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true });
+            faceMesh.material = faceMaskMaterial;
+            faceMesh.scale.set(0.9, 1.0, 1.0);
+            faceMesh.position.set(0, 0.1, 0);
+            scene.add(faceMesh);
+
+            // Скелет (окремий Mesh)
+            const wireframeMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
+            const skeletonMesh = mindarThree.addFaceMesh();
+            skeletonMesh.material = wireframeMaterial;
+            skeletonMesh.scale.set(0.9, 1.0, 1.0);
+            skeletonMesh.position.set(0, 0.1, 0);
+            scene.add(skeletonMesh);
+            skeletonMesh.visible = false;
+
+            // Квамі (через anchor+plane)
+            let kwamiObj = null;
+            // Доп/прикраса (через anchor+plane)
+            let dopObj = null;
+
+            let textures = {};
+            const loadTexture = (path) => {
+                if (!path) return null;
+                if (!textures[path]) {
+                    textures[path] = textureLoader.load(path);
+                }
+                return textures[path];
+            };
+
+            let currentCharacterId = 1;
+
+            function createKwami(id) {
+                // Видаляємо попередній, якщо був
+                if (kwamiObj && kwamiObj.anchor) mindarThree.scene.remove(kwamiObj.anchor.group);
+                const params = kwamiParams[id] || { offset: [0.45, 0.25, 0], scale: 0.35 };
+                const anchor = mindarThree.addAnchor(10);
+                const plane = new THREE.Mesh(
+                    new THREE.PlaneGeometry(1, 1),
+                    new THREE.MeshBasicMaterial({ map: null, transparent: true })
+                );
+                plane.position.set(...params.offset);
+                plane.scale.set(params.scale, params.scale, params.scale);
+                anchor.group.add(plane);
+                kwamiObj = { anchor, plane };
+            }
+
+            function createDop(id) {
+                // Видаляємо попередній, якщо був
+                if (dopObj && dopObj.anchor) mindarThree.scene.remove(dopObj.anchor.group);
+                const params = dopParams[id] || { anchor: 152, offset: [0, -0.25, 0], scale: 0.3 };
+                const anchor = mindarThree.addAnchor(params.anchor);
+                const plane = new THREE.Mesh(
+                    new THREE.PlaneGeometry(1, 1),
+                    new THREE.MeshBasicMaterial({ map: null, transparent: true })
+                );
+                plane.position.set(...params.offset);
+                plane.scale.set(params.scale, params.scale, params.scale);
+                anchor.group.add(plane);
+                dopObj = { anchor, plane };
+            }
+
+            const selectCharacter = (id) => {
+                currentCharacterId = id;
+                const character = characters.find(c => c.id === id);
+                if (!character) return;
+
+                // Маска
+                faceMaskMaterial.map = loadTexture(`masks/m${id}.png`);
+
+                // Скелет
+                faceMesh.scale.set(0.9, 1.0, 1.0);
+                faceMesh.position.set(0, 0.1, 0);
+                skeletonMesh.scale.set(0.9, 1.0, 1.0);
+                skeletonMesh.position.set(0, 0.1, 0);
+
+                // Квамі
+                createKwami(id);
+                kwamiObj.plane.material.map = loadTexture(`kwami/k${id}.png`);
+
+                // Доп/прикраса
+                createDop(id);
+                const accessoryFile = accessoryFileMap[id];
+                if (accessoryFile) {
+                    dopObj.plane.material.map = loadTexture(`dop/${accessoryFile}`);
+                } else {
+                    dopObj.plane.material.map = null;
+                }
+
+                document.querySelectorAll('.char-button').forEach(btn => btn.classList.toggle('active', parseInt(btn.dataset.id) === id));
+                updateVisibility();
+            };
+
+            // Стан видимості
+            const visibilityState = { mask: true, kwami: true, accessory: true, skeleton: false };
+
+            // Оновлення видимості всіх Mesh'ів
+            const updateVisibility = () => {
+                faceMesh.visible = visibilityState.mask;
+                skeletonMesh.visible = visibilityState.skeleton;
+                if (kwamiObj && kwamiObj.anchor) kwamiObj.anchor.group.visible = visibilityState.kwami;
+                if (dopObj && dopObj.anchor) dopObj.anchor.group.visible = visibilityState.accessory;
+            };
+            // Додаємо кнопки персонажів
+            characters.forEach(c => {
+                const btn = document.createElement('button');
+                btn.className = 'char-button';
+                btn.style.backgroundImage = `url(buttons/${c.id}.png)`;
+                btn.onclick = () => selectCharacter(c.id);
+                btn.dataset.id = c.id;
+                document.getElementById('buttons-container').appendChild(btn);
+            });
+
+            // Додаємо контролі
+            const controls = [
+                {name: 'Маска', key: 'mask'},
+                {name: 'Квамі', key: 'kwami'},
+                {name: 'Прикраса', key: 'accessory'},
+                {name: 'Скелет', key: 'skeleton'}
+            ];
+            controls.forEach((control, idx) => {
+                const btn = document.createElement('button');
+                // За замовчуванням Маска, Квамі, Прикраса — активні, Скелет — ні
+                const isActive = control.key !== 'skeleton';
+                btn.className = 'control-button' + (isActive ? ' active' : '');
+                btn.textContent = control.name;
+                btn.onclick = () => {
+                    if (control.key === 'skeleton') {
+                        visibilityState.skeleton = !visibilityState.skeleton;
+                        btn.classList.toggle('active', visibilityState.skeleton);
+                    } else {
+                        visibilityState[control.key] = !visibilityState[control.key];
+                        btn.classList.toggle('active', visibilityState[control.key]);
+                    }
+                    updateVisibility();
+                };
+                document.getElementById('controls-container').appendChild(btn);
+            });
+
+            // Кнопка "Поділитись"
+            document.getElementById('share-button').addEventListener('click', async () => {
+                const dataUrl = renderer.domElement.toDataURL('image/png');
+                const blob = await fetch(dataUrl).then(res => res.blob());
+                const file = new File([blob], 'miraculous-me.png', { type: blob.type });
+                if (navigator.share) await navigator.share({ files: [file], title: 'Мій образ Miraculous!' });
+            });
+
+            await mindarThree.start();
+            selectCharacter(1);
+            renderer.setAnimationLoop(() => renderer.render(scene, camera));
+        });
+    </script>
+</body>
+</html>
