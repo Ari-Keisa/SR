@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <title>MindAR: Відео + Корабель</title>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.145.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.145.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; overflow: hidden; width: 100vw; height: 100vh; background: transparent; }
+    #ar-container { width: 100vw; height: 100vh; position: relative; background: transparent; }
+    #ar-container video, #ar-container canvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; background: transparent;
+    }
+    #start-button {
+      position: absolute; top: 10px; left: 10px; z-index: 10;
+      padding: 10px 20px; font-size: 18px; cursor: pointer;
+      background-color: #007bff; color: white; border: none; border-radius: 5px;
+    }
+    #start-button:hover { background-color: #0056b3; }
+  </style>
+</head>
+<body>
+  <button id="start-button">Старт AR</button>
+  <div id="ar-container"></div>
+  <script>
+    let boatPivot = null;
+    let boatMeshes = [];
+
+    document.getElementById('start-button').addEventListener('click', async () => {
+      document.getElementById('start-button').style.display = 'none';
+
+      const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+        container: document.getElementById('ar-container'),
+        imageTargetSrc: './sea_boat.mind',
+        maxTrack: 2,
+      });
+
+      const { renderer, scene, camera } = mindarThree;
+
+      // Освітлення
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1));
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+      dirLight.position.set(0, 5, 5);
+      scene.add(dirLight);
+
+      // --- Маркер 1: Відео океану ---
+      const anchor1 = mindarThree.addAnchor(0);
+      const video = document.createElement('video');
+      video.src = "ocean.mp4";
+      video.crossOrigin = "anonymous";
+      video.loop = true;
+      video.muted = false;
+      video.playsInline = true;
+      video.autoplay = false;
+
+      const videoTexture = new THREE.VideoTexture(video);
+      const geometry = new THREE.PlaneGeometry(2.2, 1.23);
+      const material = new THREE.MeshBasicMaterial({ map: videoTexture, side: THREE.DoubleSide });
+      const videoMesh = new THREE.Mesh(geometry, material);
+      videoMesh.position.set(0, 0, 0);
+      anchor1.group.add(videoMesh);
+
+      anchor1.onTargetFound = () => { video.play(); };
+      anchor1.onTargetLost = () => { video.pause(); };
+
+      // --- Маркер 2: Корабель ---
+      const anchor2 = mindarThree.addAnchor(1);
+      const gltfLoader = new THREE.GLTFLoader();
+
+      boatPivot = new THREE.Group();
+      anchor2.group.add(boatPivot);
+
+      gltfLoader.load("main_boat_from_over_the_seas_ggj17.glb", (gltf) => {
+        const boatModel = gltf.scene;
+        boatModel.scale.set(0.008, 0.008, 0.008); // ЩЕ менше!
+        boatModel.position.set(0, -0.05, 0);
+        boatPivot.add(boatModel);
+
+        // Збираємо всі меші для Raycaster
+        boatMeshes = [];
+        boatModel.traverse(obj => {
+          if (obj.isMesh) boatMeshes.push(obj);
+        });
+      });
+
+      // --- Обробка кліку по кораблю ---
+      renderer.domElement.addEventListener('pointerdown', (event) => {
+        if (!boatPivot || boatMeshes.length === 0) return;
+        const mouse = {
+          x: (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
+          y: -(event.clientY / renderer.domElement.clientHeight) * 2 + 1
+        };
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(boatMeshes, true);
+        if (intersects.length > 0) {
+          // Випадковий кут від 45 до 90 градусів
+          const angle = (Math.random() * (90 - 45) + 45) * Math.PI / 180;
+          boatPivot.rotation.z += angle;
+        }
+      });
+
+      await mindarThree.start();
+
+      renderer.setAnimationLoop(() => {
+        renderer.render(scene, camera);
+      });
+    });
+  </script>
+</body>
+</html>
