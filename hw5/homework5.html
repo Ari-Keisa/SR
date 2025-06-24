@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <title>MindAR: Два маркери, анімація і звук</title>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.145.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.145.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/audio/AudioListener.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/audio/Audio.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
+  <style>
+    html, body {
+      margin: 0; padding: 0; overflow: hidden;
+      width: 100vw; height: 100vh;
+      background: transparent !important;
+    }
+    #ar-container {
+      width: 100vw; height: 100vh; position: relative;
+      background: transparent !important;
+    }
+    #ar-container video, #ar-container canvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;
+      background: transparent !important;
+      z-index: 1;
+    }
+    #start-button {
+      position: absolute; top: 10px; left: 10px; z-index: 10;
+      padding: 10px 20px; font-size: 18px; cursor: pointer;
+      background-color: #007bff; color: white; border: none; border-radius: 5px;
+    }
+    #start-button:hover { background-color: #0056b3; }
+  </style>
+</head>
+<body>
+  <button id="start-button">Старт AR</button>
+  <div id="ar-container"></div>
+  <script>
+    document.getElementById('start-button').addEventListener('click', async () => {
+      document.getElementById('start-button').style.display = 'none';
+
+      const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+        container: document.getElementById('ar-container'),
+        imageTargetSrc: './markers.mind',
+        maxTrack: 2,
+      });
+
+      const { renderer, scene, camera } = mindarThree;
+
+      // Освітлення
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1));
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+      dirLight.position.set(0, 5, 5);
+      scene.add(dirLight);
+
+      // Аудіо слухач
+      const listener = new THREE.AudioListener();
+      camera.add(listener);
+
+      const gltfLoader = new THREE.GLTFLoader();
+      const audioLoader = new THREE.AudioLoader();
+
+      // --- Маркер 1: free_low_poly_game_assets.glb ---
+      const anchor1 = mindarThree.addAnchor(0);
+      const modelGroup1 = new THREE.Group();
+      let mixer1;
+      anchor1.group.add(modelGroup1);
+
+      gltfLoader.load("free_low_poly_game_assets.glb", (gltf) => {
+        modelGroup1.add(gltf.scene);
+        gltf.scene.scale.set(0.08, 0.08, 0.08); // ЩЕ менше!
+        gltf.scene.position.y = -0.05;
+        if (gltf.animations && gltf.animations.length > 0) {
+          mixer1 = new THREE.AnimationMixer(gltf.scene);
+          gltf.animations.forEach((clip) => mixer1.clipAction(clip).play());
+        }
+      });
+
+      // --- Маркер 2: mining_town.glb ---
+      const anchor2 = mindarThree.addAnchor(1);
+      const modelGroup2 = new THREE.Group();
+      let mixer2;
+      anchor2.group.add(modelGroup2);
+
+      gltfLoader.load("mining_town.glb", (gltf) => {
+        modelGroup2.add(gltf.scene);
+        gltf.scene.scale.set(0.03, 0.03, 0.03); // ЩЕ менше!
+        gltf.scene.position.y = -0.02;
+        if (gltf.animations && gltf.animations.length > 0) {
+          mixer2 = new THREE.AnimationMixer(gltf.scene);
+          gltf.animations.forEach((clip) => mixer2.clipAction(clip).play());
+        }
+      });
+
+      // --- Звук для обох маркерів (НЕ positional, а просто Audio, щоб точно було чутно) ---
+      const sound1 = new THREE.Audio(listener);
+      const sound2 = new THREE.Audio(listener);
+
+      audioLoader.load("Hans Zimmer, John Powell - Panda Po.mp3", (buffer) => {
+        sound1.setBuffer(buffer);
+        sound1.setLoop(true);
+        sound1.setVolume(1.5); // гучніше
+      });
+      audioLoader.load("Hans Zimmer, John Powell - Panda Po.mp3", (buffer) => {
+        sound2.setBuffer(buffer);
+        sound2.setLoop(true);
+        sound2.setVolume(1.5);
+      });
+
+      anchor1.onTargetFound = async () => {
+        await listener.context.resume();
+        if (sound1.buffer && !sound1.isPlaying) sound1.play();
+      };
+      anchor1.onTargetLost = () => {
+        if (sound1.isPlaying) sound1.pause();
+      };
+
+      anchor2.onTargetFound = async () => {
+        await listener.context.resume();
+        if (sound2.buffer && !sound2.isPlaying) sound2.play();
+      };
+      anchor2.onTargetLost = () => {
+        if (sound2.isPlaying) sound2.pause();
+      };
+
+      await mindarThree.start();
+
+      renderer.setAnimationLoop((delta) => {
+        if (mixer1) mixer1.update(delta);
+        if (mixer2) mixer2.update(delta);
+
+        // Додаткова анімація (обертання)
+        modelGroup1.rotation.y += 0.005;
+        modelGroup2.rotation.y -= 0.005;
+
+        renderer.render(scene, camera);
+      });
+    });
+  </script>
+</body>
+</html>
