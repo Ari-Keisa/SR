@@ -110,9 +110,9 @@
         import { MindARThree } from 'mindar-face-three';
 
         const characters = [
-            { id: 1, name: 'Ladybug', accessoryType: 'earrings'},
+            { id: 1, name: 'Ladybug', accessoryType: 'earring'},
             { id: 2, name: 'Cat Noir', accessoryType: 'ears'},
-            { id: 3, name: 'Rena Rouge', accessoryType: 'talisman'},
+            { id: 3, name: 'Rena Rouge', accessoryType: 'ears-talisman'},
             { id: 4, name: 'Carapace', accessoryType: 'hood'},
             { id: 5, name: 'Viperion', accessoryType: 'side-object'},
             { id: 6, name: 'Monarch', accessoryType: 'talisman'},
@@ -124,20 +124,61 @@
         ];
 
         const accessoryFileMap = {
-            1: '1serejki.png', 2: '2yski.png', 3: '3talisman.png', 4: '4kapyshon.png', 5: '5arfa.png',
+            1: '1serejki.png', 2: '2yski.png', 3: '3yski.png', 4: '4kapyshon.png', 5: '5arfa.png',
             6: '6talisman.png', 7: '7yski.png', 8: '8brosh.png', 9: '9yski.png', 10: '10yski.png', 11: '11kapyshon.png'
         };
 
-        // Параметри для квамі та доп (можеш підбирати для кожного персонажа)
+        // Квамі: далі від голови і нижче
         const kwamiParams = {
-            1: { offset: [0.45, 0.25, 0], scale: 0.35 },
-            2: { offset: [0.45, 0.25, 0], scale: 0.35 },
-            // ... для інших персонажів
+            1: { offset: [1, -0.7, 0], scale: 0.7 },
+            2: { offset: [1, -0.7, 0], scale: 0.7 },
+            3: { offset: [1, -0.7, 0], scale: 0.7 },
+            4: { offset: [1, -0.7, 0], scale: 0.7 },
+            5: { offset: [1, -0.7, 0], scale: 0.7 },
+            6: { offset: [1, -0.7, 0], scale: 0.7 },
+            7: { offset: [1, -0.7, 0], scale: 0.7 },
+            8: { offset: [1, -0.7, 0], scale: 0.7 },
+            9: { offset: [1, -0.7, 0], scale: 0.7 },
+            10: { offset: [1, -0.7, 0], scale: 0.7 },
+            11: { offset: [1, -0.7, 0], scale: 0.7 }
         };
+
+        // Аксесуари:
         const dopParams = {
-            1: { anchor: 152, offset: [0, -0.25, 0], scale: 0.3 }, // напр. сережки
-            2: { anchor: 10, offset: [0, 0.18, 0], scale: 0.5 },   // напр. вушка
-            // ... для інших персонажів
+            1: [ // Ladybug — сережки
+                { anchor: 152, offset: [0.0, -0.2, 0.0], scale: 1.2 }
+            ],
+            2: [ // Cat Noir — вушка
+                { anchor: 10, offset: [0, 0.67, 0], scale: 1.3 }
+            ],
+            3: [ // Rena Rouge — дві прикраси: вушка і талісман на шиї
+                { anchor: 10, offset: [0, 0.67, 0], scale: 1.3 }, // вушка
+                { anchor: 10, offset: [0, -1.25, 0.0], scale: 0.38, file: '3talisman.png' } // талісман на шиї
+            ],
+            4: [ // Carapace — капюшон
+                { anchor: 10, offset: [-0.0, -0.4, -0.58], scale: 2.1 }
+            ],
+            5: [ // Viperion — арфа
+                { anchor: 10, offset: [-1.00, -0.00, 0.25], scale: 0.7 }
+            ],
+            6: [ // Monarch — талісман на шиї
+                { anchor: 10, offset: [0, -1.25, 0.0], scale: 0.38 }
+            ],
+            7: [ // Bunnix — вушка на голові
+                { anchor: 10, offset: [0, 0.67, 0], scale: 1.3 }
+            ],
+            8: [ // Queen Bee — брошка
+                { anchor: 10, offset: [-0.2, 0.30, 0.05], scale: 0.3 }
+            ],
+            9: [ // Ryuko — вушка на голові
+                { anchor: 10, offset: [0, 0.67, 0], scale: 1.3 }
+            ],
+            10: [ // Alix — вушка на голові
+                { anchor: 10, offset: [0, 0.67, 0], scale: 1.3 }
+            ],
+            11: [ // Multimouse — капюшон
+                { anchor: 10, offset: [-0.0, -0.4, -0.58], scale: 1.9 }
+            ]
         };
 
         document.addEventListener('DOMContentLoaded', async () => {
@@ -173,13 +214,8 @@
             );
             kwamiAnchor.group.add(kwamiPlane);
 
-            // Доп/прикраса anchor/plane (один раз)
-            const dopAnchor = mindarThree.addAnchor(152);
-            const dopPlane = new THREE.Mesh(
-                new THREE.PlaneGeometry(1, 1),
-                new THREE.MeshBasicMaterial({ map: null, transparent: true })
-            );
-            dopAnchor.group.add(dopPlane);
+            // Для аксесуарів (допів)
+            let dopPlanes = [];
 
             let currentCharacterId = 1;
 
@@ -196,18 +232,37 @@
                 // Маска
                 faceMaskMaterial.map = loadTexture(`masks/m${id}.png`);
 
-                // Квамі
-                const kwamiParam = kwamiParams[id] || { offset: [0.45, 0.25, 0], scale: 0.35 };
+                // Квамі (ще далі від голови і нижче)
+                const kwamiParam = kwamiParams[id] || { offset: [0.7, -0.3, 0], scale: 0.5 };
                 kwamiPlane.position.set(...kwamiParam.offset);
                 kwamiPlane.scale.set(kwamiParam.scale, kwamiParam.scale, kwamiParam.scale);
                 kwamiPlane.material.map = loadTexture(`kwami/k${id}.png`);
 
-                // Доп/прикраса
-                const dopParam = dopParams[id] || { offset: [0, -0.25, 0], scale: 0.3 };
-                dopPlane.position.set(...dopParam.offset);
-                dopPlane.scale.set(dopParam.scale, dopParam.scale, dopParam.scale);
-                const accessoryFile = accessoryFileMap[id];
-                dopPlane.material.map = accessoryFile ? loadTexture(`dop/${accessoryFile}`) : null;
+                // Видаляємо старі допPlanes
+                dopPlanes.forEach(plane => {
+                    if (plane.parent) plane.parent.remove(plane);
+                });
+                dopPlanes = [];
+
+                // Додаємо всі допи для персонажа
+                const dopParamsArr = dopParams[id] || [];
+                dopParamsArr.forEach((dopParam, idx) => {
+                    // Дозволяємо індивідуальний файл для талісмана Rena Rouge
+                    const accessoryFile = dopParam.file || accessoryFileMap[id];
+                    const plane = new THREE.Mesh(
+                        new THREE.PlaneGeometry(1, 1),
+                        new THREE.MeshBasicMaterial({ 
+                            map: accessoryFile ? loadTexture(`dop/${accessoryFile}`) : null, 
+                            transparent: true 
+                        })
+                    );
+                    plane.position.set(...dopParam.offset);
+                    plane.scale.set(dopParam.scale, dopParam.scale, dopParam.scale);
+                    // Додаємо до відповідного anchor
+                    const anchor = mindarThree.addAnchor(dopParam.anchor);
+                    anchor.group.add(plane);
+                    dopPlanes.push(plane);
+                });
 
                 document.querySelectorAll('.char-button').forEach(btn => btn.classList.toggle('active', parseInt(btn.dataset.id) === id));
             }
@@ -220,7 +275,7 @@
                 faceMesh.visible = !!visibilityState.mask;
                 skeletonMesh.visible = !!visibilityState.skeleton;
                 kwamiPlane.visible = !!visibilityState.kwami;
-                dopPlane.visible = !!visibilityState.accessory;
+                dopPlanes.forEach(plane => plane.visible = !!visibilityState.accessory);
             }
 
             // Додаємо кнопки персонажів
