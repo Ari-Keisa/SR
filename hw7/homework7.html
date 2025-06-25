@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <title>MindAR: YouTube + Vimeo Overlay з позицією</title>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.145.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-three.prod.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; overflow: hidden; width: 100vw; height: 100vh; background: transparent; }
+    #ar-container { width: 100vw; height: 100vh; position: relative; background: transparent; }
+    #ar-container video, #ar-container canvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; background: transparent;
+    }
+    #start-button {
+      position: absolute; top: 10px; left: 10px; z-index: 10;
+      padding: 10px 20px; font-size: 18px; cursor: pointer;
+      background-color: #007bff; color: white; border: none; border-radius: 5px;
+    }
+    #start-button:hover { background-color: #0056b3; }
+    .video-overlay {
+      display: none;
+      position: fixed;
+      bottom: 2vh;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90vw;
+      height: 50vw; /* 16:9 */
+      z-index: 1000;
+      border: 3px solid #007bff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px #000a;
+      background: #000;
+      max-width: 1200px;
+      max-height: 675px;
+    }
+    @media (max-width: 700px) {
+      .video-overlay { width: 95vw; height: 53vw; }
+    }
+  </style>
+</head>
+<body>
+  <button id="start-button">Старт AR</button>
+  <div id="ar-container"></div>
+  <script>
+    let ytFrame = null;
+    let vimeoFrame = null;
+
+    document.getElementById('start-button').addEventListener('click', async () => {
+      document.getElementById('start-button').style.display = 'none';
+
+      const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+        container: document.getElementById('ar-container'),
+        imageTargetSrc: './markers.mind',
+        maxTrack: 2,
+      });
+
+      const { renderer, scene, camera } = mindarThree;
+
+      // Освітлення
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1));
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+      dirLight.position.set(0, 5, 5);
+      scene.add(dirLight);
+
+      // --- Маркер 1: YouTube ---
+      let ytCreated = false;
+      let ytVisible = false;
+      function showYT() {
+        if (!ytFrame) {
+          ytFrame = document.createElement('iframe');
+          ytFrame.className = "video-overlay";
+          ytFrame.src = "https://www.youtube.com/embed/GCTulgUb_R0?autoplay=1&mute=0&rel=0&showinfo=0&controls=1&enablejsapi=1";
+          ytFrame.frameBorder = "0";
+          ytFrame.allow = "autoplay; encrypted-media; fullscreen";
+          ytFrame.allowFullscreen = true;
+          ytFrame.style.display = "none";
+          document.body.appendChild(ytFrame);
+        }
+        ytFrame.style.display = 'block';
+        ytVisible = true;
+        ytFrame.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+      }
+      function hideYT() {
+        if (ytFrame) {
+          ytFrame.style.display = 'none';
+          ytVisible = false;
+          ytFrame.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+        }
+      }
+
+      // --- Маркер 2: Vimeo ---
+      let vimeoCreated = false;
+      let vimeoVisible = false;
+      function showVimeo() {
+        if (!vimeoFrame) {
+          vimeoFrame = document.createElement('iframe');
+          vimeoFrame.className = "video-overlay";
+          vimeoFrame.src = "https://player.vimeo.com/video/76979871?autoplay=1&muted=0";
+          vimeoFrame.frameBorder = "0";
+          vimeoFrame.allow = "autoplay; fullscreen; picture-in-picture; encrypted-media";
+          vimeoFrame.allowFullscreen = true;
+          vimeoFrame.style.display = "none";
+          document.body.appendChild(vimeoFrame);
+        }
+        vimeoFrame.style.display = 'block';
+        vimeoVisible = true;
+        vimeoFrame.contentWindow.postMessage({ method: "play" }, "*");
+      }
+      function hideVimeo() {
+        if (vimeoFrame) {
+          vimeoFrame.style.display = 'none';
+          vimeoVisible = false;
+          vimeoFrame.contentWindow.postMessage({ method: "pause" }, "*");
+        }
+      }
+
+      const anchor1 = mindarThree.addAnchor(0);
+      anchor1.onTargetFound = showYT;
+      anchor1.onTargetLost = hideYT;
+
+      const anchor2 = mindarThree.addAnchor(1);
+      anchor2.onTargetFound = showVimeo;
+      anchor2.onTargetLost = hideVimeo;
+
+      await mindarThree.start();
+
+      renderer.setAnimationLoop(() => {
+        renderer.render(scene, camera);
+      });
+    });
+  </script>
+</body>
+</html>
