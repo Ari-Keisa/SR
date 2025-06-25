@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <title>WebXR AR — Кажан з прицілом і вибором</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <style>
+    body { margin: 0; overflow: hidden; font-family: sans-serif; }
+    #info {
+      position: absolute; top: 10px; left: 10px;
+      color: #fff; background: rgba(0,0,0,0.5);
+      padding: 8px 16px; border-radius: 8px; z-index: 10;
+    }
+    #model-select {
+      position: absolute;
+      top: 20px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 18px;
+      border: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      outline: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">Торкнись площини, щоб розмістити кажана</div>
+  <select id="model-select">
+    <option value="bat.glb">Bat</option>
+    <option value="emerald_bat.glb">Emerald Bat</option>
+  </select>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { ARButton } from 'three/addons/webxr/ARButton.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    let camera, scene, renderer;
+    let controller, reticle, crosshairSprite;
+    let hitTestSource = null;
+    let hitTestSourceRequested = false;
+    let loadedModel = null;
+    let selectedModel = document.getElementById('model-select').value;
+    const objectsToAnimate = [];
+
+    const loader = new GLTFLoader();
+
+    function loadModel(path) {
+      loader.load(path, (gltf) => {
+        loadedModel = gltf.scene;
+        loadedModel.scale.set(0.0000000005, 0.0000000005, 0.0000000005); // Надзвичайно маленький!
+      });
+    }
+
+    loadModel(selectedModel);
+
+    document.getElementById('model-select').addEventListener('change', (e) => {
+      selectedModel = e.target.value;
+      loadModel(selectedModel);
+    });
+
+    init();
+
+    function init() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+      dirLight.position.set(2, 5, 3);
+      scene.add(dirLight);
+
+      const arButton = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
+      arButton.style.bottom = '20px';
+      arButton.style.right = 'calc(50% - 75px)';
+      arButton.style.width = '150px';
+      arButton.style.backgroundColor = '#a259c4';
+      document.body.appendChild(arButton);
+
+      controller = renderer.xr.getController(0);
+      controller.addEventListener('select', onSelect);
+      scene.add(controller);
+
+      // Приціл-спрайт (замість reticle)
+      const textureLoader = new THREE.TextureLoader();
+      textureLoader.load('sniper.png', (tex) => {
+        const material = new THREE.SpriteMaterial({ map: tex, color: 0xa259c4, opacity: 0.85, transparent: true });
+        crosshairSprite = new THREE.Sprite(material);
+        crosshairSprite.center.set(0.5, 0.5);
+        crosshairSprite.scale.set(0.09, 0.09, 1); // ~9 см
+        crosshairSprite.visible = false;
+        scene.add(crosshairSprite);
+      });
+
+      // Reticle — невидимий, тільки для hit-test
+      reticle = new THREE.Mesh(
+        new THREE.RingGeometry(0.07, 0.09, 32).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: 0x00ffff, opacity: 0.0, transparent: true })
+      );
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
+
+      window.addEventListener('resize', onWindowResize, false);
+      renderer.setAnimationLoop(animate);
+    }
+
+    function onSelect() {
+      if (reticle.visible && loadedModel) {
+        const clone = loadedModel.clone();
+        clone.scale.set(0.0000000005, 0.0000000005, 0.0000000005); // Надзвичайно маленький!
+        // Центруємо модель по bounding box
+        const box = new THREE.Box3().setFromObject(clone);
+        const center = box.getCenter(new THREE.Vector3());
+        clone.position.setFromMatrixPosition(reticle.matrix);
+        clone.position.y += 0.01;
+        clone.position.sub(center); // Центруємо
+        clone.position.add(new THREE.Vector3().setFromMatrixPosition(reticle.matrix));
+        scene.add(clone);
+        objectsToAnimate.push(clone);
+      }
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate(timestamp, frame) {
+      // Анімація об'єктів (обертання)
+      objectsToAnimate.forEach(obj => {
+        obj.rotation.x += 0.01;
+        obj.rotation.y += 0.02;
+      });
+
+      // WebXR hit-test
+      if (renderer.xr.isPresenting && frame) {
+        const referenceSpace = renderer.xr.getReferenceSpace();
+        const session = renderer.xr.getSession();
+
+        if (!hitTestSourceRequested) {
+          session.requestReferenceSpace('viewer').then(refSpace => {
+            session.requestHitTestSource({ space: refSpace }).then(source => {
+              hitTestSource = source;
+            });
+          });
+          session.addEventListener('end', () => {
+            hitTestSourceRequested = false;
+            hitTestSource = null;
+          });
+          hitTestSourceRequested = true;
+        }
+
+        if (hitTestSource) {
+          const hitTestResults = frame.getHitTestResults(hitTestSource);
+          if (hitTestResults.length > 0) {
+            const hit = hitTestResults[0];
+            reticle.visible = true;
+            reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+            // Переміщуємо приціл у ту ж позицію
+            if (crosshairSprite) {
+              crosshairSprite.visible = true;
+              crosshairSprite.position.setFromMatrixPosition(reticle.matrix);
+              crosshairSprite.position.y += 0.01;
+            }
+          } else {
+            reticle.visible = false;
+            if (crosshairSprite) crosshairSprite.visible = false;
+          }
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+  </script>
+</body>
+</html>
