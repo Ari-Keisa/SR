@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Розпізнавання обличчя</title>
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.16.0"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #000;
+    }
+    #video {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      z-index: 1;
+      background: #000;
+    }
+    #prediction {
+      position: fixed;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 28px;
+      color: yellow;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px 28px;
+      z-index: 2;
+      border-radius: 12px;
+      font-family: sans-serif;
+      pointer-events: none;
+      box-shadow: 0 2px 12px #000a;
+    }
+    a-scene {
+      display: none; /* Приховуємо A-Frame, якщо не треба */
+    }
+  </style>
+</head>
+<body>
+
+  <!-- A-Frame сцена (можна залишити прихованою) -->
+  <a-scene embedded>
+    <a-entity camera position="0 1.6 0"></a-entity>
+  </a-scene>
+
+  <!-- Відео з камери -->
+  <video id="video" autoplay playsinline></video>
+
+  <!-- Підпис під відео -->
+  <div id="prediction">Показуй обличчя...</div>
+
+  <script>
+    const video = document.getElementById('video');
+    const predictionText = document.getElementById('prediction');
+    let model;
+    const labels = ["Zelenskiy Volodimir", "Fridrich Merz", "Peter Pavel"];
+
+    async function setupCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user' },
+        audio: false
+      });
+      video.srcObject = stream;
+      return new Promise((resolve) => {
+        video.onloadedmetadata = () => {
+          resolve(video);
+        };
+      });
+    }
+
+    async function loadModel() {
+      model = await tf.loadLayersModel('models/model.json');
+      console.log('Модель завантажена');
+    }
+
+    async function predict() {
+      if (!model) return;
+
+      const tensor = tf.browser.fromPixels(video)
+        .resizeNearestNeighbor([224, 224]) // змінити на відповідний розмір для вашої моделі
+        .toFloat()
+        .div(255.0)
+        .expandDims();
+
+      const predictions = await model.predict(tensor).data();
+
+      const maxProb = Math.max(...predictions);
+      const classIndex = predictions.indexOf(maxProb);
+      const name = labels[classIndex] || "Невідомо";
+
+      predictionText.textContent = `${name} (${(maxProb * 100).toFixed(2)}%)`;
+
+      tensor.dispose();
+    }
+
+    async function main() {
+      await setupCamera();
+      await loadModel();
+      setInterval(predict, 1000); // прогноз кожну секунду
+    }
+
+    main();
+  </script>
+</body>
+</html>
