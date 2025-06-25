@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <title>Робот + MediaPipe Hands + жести</title>
+  <meta charset="UTF-8">
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; }
+    #video-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    #output-canvas { width: 100%; height: 100%; object-fit: cover; position: absolute; left: 0; top: 0; z-index: 1; }
+    #three-canvas { position: absolute; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 2; pointer-events: none; }
+    #controls {
+      position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+      z-index: 20; display: flex; flex-direction: column; align-items: center;
+      pointer-events: none;
+    }
+    #gesture {
+      background: #ffe066; color: #222; font-size: 2em; border-radius: 8px;
+      padding: 4px 18px; margin-bottom: 12px; box-shadow: 0 2px 8px #0003;
+      pointer-events: auto;
+    }
+    #manual-controls {
+      background: rgba(30,30,30,0.7);
+      border-radius: 14px;
+      padding: 8px 18px;
+      display: flex;
+      gap: 12px;
+      box-shadow: 0 2px 12px #0005;
+      pointer-events: auto;
+    }
+    .gesture-btn {
+      font-size: 2em; background: none; border: 2px solid #fff; border-radius: 10px; padding: 6px 12px;
+      cursor: pointer; transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.1s;
+      color: #fff; box-shadow: 0 1px 4px #0003; position: relative;
+    }
+    .gesture-btn.active, .gesture-btn:focus {
+      background: #ffe066;
+      border-color: #ffe066;
+      color: #222;
+      transform: scale(1.12);
+      outline: none;
+    }
+    .gesture-btn:hover {
+      background: #fff3;
+      color: #ffe066;
+      border-color: #ffe066;
+    }
+    .gesture-btn.auto {
+      border-style: dashed;
+      font-size: 1.5em;
+      color: #ffe066;
+      background: #222;
+    }
+    /* Tooltip styles */
+    .gesture-btn .tooltip {
+      display: none;
+      position: absolute;
+      left: 50%; top: -44px;
+      transform: translateX(-50%);
+      background: #222;
+      color: #ffe066;
+      padding: 7px 16px;
+      border-radius: 8px;
+      font-size: 1em;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px #0007;
+      z-index: 100;
+      pointer-events: none;
+      opacity: 0.97;
+    }
+    .gesture-btn:hover .tooltip, .gesture-btn:focus .tooltip {
+      display: block;
+    }
+    @media (max-width: 600px) {
+      #manual-controls { gap: 6px; padding: 6px 4px; }
+      .gesture-btn { font-size: 1.3em; padding: 4px 6px; }
+      #gesture { font-size: 1.3em; padding: 2px 8px; }
+      .gesture-btn .tooltip { font-size: 0.9em; }
+    }
+  </style>
+</head>
+<body>
+  <div id="video-container">
+    <video id="input-video" style="display: none;"></video>
+    <canvas id="output-canvas"></canvas>
+    <canvas id="three-canvas"></canvas>
+  </div>
+  <div id="controls">
+    <div id="gesture">✋</div>
+    <div id="manual-controls">
+      <button class="gesture-btn auto" data-gesture="auto" onclick="setGesture('auto')">
+        🧠
+        <span class="tooltip">скинути налаштування</span>
+      </button>
+      <button class="gesture-btn" data-gesture="ok" onclick="setGesture('ok')">
+        👌
+        <span class="tooltip">роби сальто</span>
+      </button>
+      <button class="gesture-btn" data-gesture="open" onclick="setGesture('open')">
+        ✋
+        <span class="tooltip">замри</span>
+      </button>
+      <button class="gesture-btn" data-gesture="peace" onclick="setGesture('peace')">
+        ✌️
+        <span class="tooltip">тинь-тунь</span>
+      </button>
+      <button class="gesture-btn" data-gesture="like" onclick="setGesture('like')">
+        👍
+        <span class="tooltip">пострибай</span>
+      </button>
+      <button class="gesture-btn" data-gesture="point_left" onclick="setGesture('point_left')">
+        👈
+        <span class="tooltip">покрутись</span>
+      </button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+
+    // === Three.js робот ===
+    const threeCanvas = document.getElementById('three-canvas');
+    const renderer = new THREE.WebGLRenderer({canvas: threeCanvas, alpha:true});
+    renderer.setClearColor(0x000000, 0);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 100);
+    camera.position.set(0, 1.2, 2.5);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(2, 5, 3);
+    scene.add(dirLight);
+
+    // Робот
+    const robot = new THREE.Group();
+
+    // Тіло
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 0.7, 0.3),
+      new THREE.MeshStandardMaterial({color: 0x8888ff})
+    );
+    body.position.y = 0.7/2;
+
+    // Голова
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 32, 32),
+      new THREE.MeshStandardMaterial({color: 0xffff88})
+    );
+    head.position.y = 0.7 + 0.22 + 0.05;
+
+    // Очі
+    const eyeL = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 16, 16),
+      new THREE.MeshStandardMaterial({color: 0x222222})
+    );
+    eyeL.position.set(-0.06, 0.7 + 0.27, 0.19);
+
+    const eyeR = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 16, 16),
+      new THREE.MeshStandardMaterial({color: 0x222222})
+    );
+    eyeR.position.set(0.06, 0.7 + 0.27, 0.19);
+
+    // Рот
+    const mouth = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.05, 0.02, 32),
+      new THREE.MeshStandardMaterial({color: 0xff4444})
+    );
+    mouth.position.set(0, 0.7 + 0.18, 0.21);
+    mouth.rotation.x = Math.PI/2;
+
+    // Антенки
+    const antennaL = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.01, 0.01, 0.18, 8),
+      new THREE.MeshStandardMaterial({color: 0xaaaaaa})
+    );
+    antennaL.position.set(-0.08, 0.7 + 0.22 + 0.18, 0);
+    antennaL.rotation.z = Math.PI/8;
+
+    const antennaR = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.01, 0.01, 0.18, 8),
+      new THREE.MeshStandardMaterial({color: 0xaaaaaa})
+    );
+    antennaR.position.set(0.08, 0.7 + 0.22 + 0.18, 0);
+    antennaR.rotation.z = -Math.PI/8;
+
+    // Ліва рука
+    const leftArm = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.06, 0.5, 24),
+      new THREE.MeshStandardMaterial({color: 0x888888})
+    );
+    leftArm.position.set(-0.32, 0.7, 0);
+    leftArm.rotation.z = Math.PI/2;
+
+    // Права рука
+    const rightArm = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.06, 0.5, 24),
+      new THREE.MeshStandardMaterial({color: 0x888888})
+    );
+    rightArm.position.set(0.32, 0.7, 0);
+    rightArm.rotation.z = Math.PI/2;
+
+    robot.add(body, head, eyeL, eyeR, mouth, antennaL, antennaR, leftArm, rightArm);
+    scene.add(robot);
+
+    // Анімаційні стани
+    let waveAngle = 0;
+    let headTurn = false, headTurnAngle = 0;
+    let dance = false, dancePhase = 0;
+    let turnLeft = false, turnLeftAngle = 0;
+    let flipAngle = 0;
+
+    let currentGesture = 'open'; // ✋
+    let manualGesture = null; // якщо не null — має пріоритет
+
+    function highlightGesture(gestureName) {
+      document.querySelectorAll('.gesture-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.gesture === gestureName);
+      });
+      document.getElementById('gesture').textContent = {
+        ok: '👌',
+        open: '✋',
+        peace: '✌️',
+        like: '👍',
+        point_left: '👈',
+        auto: '🧠'
+      }[gestureName] || '✋';
+    }
+
+    // Для тесту: кнопки
+    window.setGesture = function(name) {
+      if (name === 'auto') {
+        manualGesture = null;
+        highlightGesture('auto');
+      } else {
+        manualGesture = name;
+        highlightGesture(name);
+      }
+    };
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const gesture = manualGesture || currentGesture;
+
+      // 👌 — сальто (обертання навколо X)
+      if (gesture === 'ok') {
+        flipAngle += 0.18;
+        robot.rotation.x = flipAngle;
+        leftArm.rotation.x = -Math.PI/2;
+        rightArm.rotation.x = -Math.PI/2;
+        mouth.scale.y = 1.2;
+        robot.scale.set(1, 1, 1);
+      } else {
+        flipAngle = 0;
+        robot.rotation.x = 0;
+      }
+
+      // ✌️ — качається (масштаб збільшується/зменшується, повільніше)
+      if (gesture === 'peace') {
+        dancePhase += 0.045; // повільніше!
+        const scale = 1 + 0.3 * Math.sin(dancePhase * 1.5);
+        robot.scale.set(scale, scale, scale);
+        leftArm.rotation.x = -Math.PI/2;
+        rightArm.rotation.x = -Math.PI/2;
+        mouth.scale.y = 1.5;
+      } else if (gesture !== 'ok') {
+        robot.scale.set(1, 1, 1);
+      }
+
+      // ✋ — підняти обидві руки
+      if (gesture === 'open') {
+        leftArm.rotation.x = -Math.PI/2;
+        rightArm.rotation.x = -Math.PI/2;
+        mouth.scale.y = 1;
+      }
+
+      // 👍 — "лайк": робот стрибає і махає обома руками
+      if (gesture === 'like') {
+        dance = true;
+        dancePhase += 0.12;
+        robot.position.y = Math.abs(Math.sin(dancePhase)) * 0.25;
+        leftArm.rotation.x = Math.sin(dancePhase) * 0.8 - Math.PI/2;
+        rightArm.rotation.x = Math.cos(dancePhase) * 0.8 - Math.PI/2;
+        mouth.scale.y = 2;
+      } else if (!dance && gesture !== 'ok') {
+        robot.position.y = 0;
+      }
+
+      // 👈 — повертається вліво
+      if (gesture === 'point_left') {
+        turnLeft = true;
+        turnLeftAngle += 0.05;
+        robot.rotation.y = Math.sin(turnLeftAngle) * 0.7;
+        mouth.scale.y = 0.7;
+      } else if (gesture !== 'point_left' && gesture !== 'ok') {
+        turnLeft = false;
+        turnLeftAngle = 0;
+        robot.rotation.y = 0;
+      }
+
+      renderer.setSize(window.innerWidth, window.innerHeight, false);
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      renderer.setSize(window.innerWidth, window.innerHeight, false);
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+    });
+
+    // === MediaPipe Hands ===
+    const videoElement = document.getElementById('input-video');
+    const canvasElement = document.getElementById('output-canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+
+    function isFingerOpen(landmarks, tip, pip, mcp, handedness) {
+      if (tip === 4) { // Thumb
+        if (handedness === 'Right') {
+          return landmarks[tip].x < landmarks[mcp].x - 0.02;
+        } else {
+          return landmarks[tip].x > landmarks[mcp].x + 0.02;
+        }
+      } else {
+        return landmarks[tip].y < landmarks[pip].y && landmarks[pip].y < landmarks[mcp].y;
+      }
+    }
+
+    function distance(a, b) {
+      return Math.sqrt(
+        (a.x - b.x) ** 2 +
+        (a.y - b.y) ** 2 +
+        (a.z - b.z) ** 2
+      );
+    }
+
+    function getGestureByFingers(landmarks, handedness) {
+      if (!landmarks) return null;
+      const fingers = [
+        isFingerOpen(landmarks, 4, 3, 2, handedness),   // Thumb
+        isFingerOpen(landmarks, 8, 7, 5, handedness),   // Index
+        isFingerOpen(landmarks, 12,11,9, handedness),   // Middle
+        isFingerOpen(landmarks, 16,15,13, handedness),  // Ring
+        isFingerOpen(landmarks, 20,19,17, handedness)   // Pinky
+      ];
+      // OK: кінчики великого і вказівного дуже близько (інші пальці можуть бути розкриті)
+      const okDist = distance(landmarks[4], landmarks[8]);
+      if (okDist < 0.07) return 'ok';
+      // ✋ — всі пальці розкриті
+      if (fingers.every(f => f)) return 'open';
+      // ✌️ — вказівний і середній open, інші closed
+      if (!fingers[0] && fingers[1] && fingers[2] && !fingers[3] && !fingers[4]) return 'peace';
+      // 👍 — тільки великий open
+      if (fingers[0] && !fingers[1] && !fingers[2] && !fingers[3] && !fingers[4]) return 'like';
+      // 👈 — тільки вказівний open
+      if (!fingers[0] && fingers[1] && !fingers[2] && !fingers[3] && !fingers[4]) return 'point_left';
+      return null;
+    }
+
+    function onResults(results) {
+      const width = canvasElement.width;
+      const height = canvasElement.height;
+
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, width, height);
+      canvasCtx.drawImage(results.image, 0, 0, width, height);
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const landmarks = results.multiHandLandmarks[0];
+        const handedness = results.multiHandedness[0]?.label || 'Right';
+
+        window.drawConnectors(canvasCtx, landmarks, window.HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
+        window.drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
+
+        // === Розпізнавання жесту по пальцях ===
+        const gesture = getGestureByFingers(landmarks, handedness);
+        if (!manualGesture && gesture && gesture !== currentGesture) {
+          currentGesture = gesture;
+          highlightGesture(gesture);
+        }
+      }
+      canvasCtx.restore();
+    }
+
+    const hands = new window.Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+      selfieMode: true,
+    });
+
+    hands.onResults(onResults);
+
+    async function startCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      videoElement.srcObject = stream;
+
+      videoElement.onloadedmetadata = () => {
+        videoElement.play();
+        canvasElement.width = videoElement.videoWidth;
+        canvasElement.height = videoElement.videoHeight;
+        threeCanvas.width = videoElement.videoWidth;
+        threeCanvas.height = videoElement.videoHeight;
+        sendToMediaPipe();
+      };
+    }
+
+    async function sendToMediaPipe() {
+      if (videoElement.readyState >= 2) {
+        await hands.send({ image: videoElement });
+      }
+      requestAnimationFrame(sendToMediaPipe);
+    }
+
+    startCamera();
+    highlightGesture(currentGesture);
+  </script>
+</body>
+</html>
