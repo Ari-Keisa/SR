@@ -12,16 +12,18 @@
     #ar-container video, #ar-container canvas {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; background: transparent;
     }
-    #start-button {
+    #start-button, #rotate-button {
       position: absolute; top: 10px; left: 10px; z-index: 10;
       padding: 10px 20px; font-size: 18px; cursor: pointer;
       background-color: #007bff; color: white; border: none; border-radius: 5px;
     }
-    #start-button:hover { background-color: #0056b3; }
+    #start-button:hover, #rotate-button:hover { background-color: #0056b3; }
+    #rotate-button { top: 60px; display: none; }
   </style>
 </head>
 <body>
   <button id="start-button">Старт AR</button>
+  <button id="rotate-button">Обертати корабель</button>
   <div id="ar-container"></div>
   <script>
     let boatPivot = null;
@@ -38,13 +40,13 @@
 
       const { renderer, scene, camera } = mindarThree;
 
-      // Освітлення
+      
       scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1));
       const dirLight = new THREE.DirectionalLight(0xffffff, 1);
       dirLight.position.set(0, 5, 5);
       scene.add(dirLight);
 
-      // --- Маркер 1: Відео океану ---
+      
       const anchor1 = mindarThree.addAnchor(0);
       const video = document.createElement('video');
       video.src = "ocean.mp4";
@@ -64,7 +66,7 @@
       anchor1.onTargetFound = () => { video.play(); };
       anchor1.onTargetLost = () => { video.pause(); };
 
-      // --- Маркер 2: Корабель ---
+      
       const anchor2 = mindarThree.addAnchor(1);
       const gltfLoader = new THREE.GLTFLoader();
 
@@ -73,20 +75,37 @@
 
       gltfLoader.load("main_boat_from_over_the_seas_ggj17.glb", (gltf) => {
         const boatModel = gltf.scene;
-        boatModel.scale.set(0.008, 0.008, 0.008); // ЩЕ менше!
+        boatModel.scale.set(0.008, 0.008, 0.008);
         boatModel.position.set(0, -0.05, 0);
         boatPivot.add(boatModel);
 
-        // Збираємо всі меші для Raycaster
         boatMeshes = [];
         boatModel.traverse(obj => {
           if (obj.isMesh) boatMeshes.push(obj);
         });
       });
 
-      // --- Обробка кліку по кораблю ---
+      
+      const rotateButton = document.getElementById('rotate-button');
+      rotateButton.addEventListener('click', () => {
+        if (boatPivot) {
+          const randomAngle = THREE.MathUtils.degToRad(Math.random() * (90 - 45) + 45);
+          boatPivot.rotation.y += randomAngle;
+        }
+      });
+
+     
+      anchor2.onTargetFound = () => {
+        rotateButton.style.display = 'block';
+      };
+      anchor2.onTargetLost = () => {
+        rotateButton.style.display = 'none';
+      };
+
+      
       renderer.domElement.addEventListener('pointerdown', (event) => {
         if (!boatPivot || boatMeshes.length === 0) return;
+
         const mouse = {
           x: (event.clientX / renderer.domElement.clientWidth) * 2 - 1,
           y: -(event.clientY / renderer.domElement.clientHeight) * 2 + 1
@@ -94,10 +113,10 @@
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(mouse, camera);
         const intersects = raycaster.intersectObjects(boatMeshes, true);
+
         if (intersects.length > 0) {
-          // Випадковий кут від 45 до 90 градусів
-          const angle = (Math.random() * (90 - 45) + 45) * Math.PI / 180;
-          boatPivot.rotation.z += angle;
+          const randomAngle = THREE.MathUtils.degToRad(Math.random() * (90 - 45) + 45);
+          boatPivot.rotation.z += randomAngle;
         }
       });
 
