@@ -152,64 +152,43 @@
             faceMesh.material = faceMaskMaterial;
             faceMesh.scale.set(0.9, 1.0, 1.0);
             faceMesh.position.set(0, 0.1, 0);
+            faceMesh.renderOrder = 5;
             scene.add(faceMesh);
 
             // Скелет (окремий Mesh)
-            const wireframeMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
+            const wireframeMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: 0.8 });
             const skeletonMesh = mindarThree.addFaceMesh();
             skeletonMesh.material = wireframeMaterial;
             skeletonMesh.scale.set(0.9, 1.0, 1.0);
             skeletonMesh.position.set(0, 0.1, 0);
+            skeletonMesh.renderOrder = 10; // поверх маски
             scene.add(skeletonMesh);
-            skeletonMesh.visible = false;
+            skeletonMesh.visible = false; // Скелет за замовчуванням вимкнений
 
-            // Квамі (через anchor+plane)
-            let kwamiObj = null;
-            // Доп/прикраса (через anchor+plane)
-            let dopObj = null;
+            // Квамі anchor/plane (один раз)
+            const kwamiAnchor = mindarThree.addAnchor(10);
+            const kwamiPlane = new THREE.Mesh(
+                new THREE.PlaneGeometry(1, 1),
+                new THREE.MeshBasicMaterial({ map: null, transparent: true })
+            );
+            kwamiAnchor.group.add(kwamiPlane);
 
-            let textures = {};
-            const loadTexture = (path) => {
-                if (!path) return null;
-                if (!textures[path]) {
-                    textures[path] = textureLoader.load(path);
-                }
-                return textures[path];
-            };
+            // Доп/прикраса anchor/plane (один раз)
+            const dopAnchor = mindarThree.addAnchor(152);
+            const dopPlane = new THREE.Mesh(
+                new THREE.PlaneGeometry(1, 1),
+                new THREE.MeshBasicMaterial({ map: null, transparent: true })
+            );
+            dopAnchor.group.add(dopPlane);
 
             let currentCharacterId = 1;
 
-            function createKwami(id) {
-                // Видаляємо попередній, якщо був
-                if (kwamiObj && kwamiObj.anchor) mindarThree.scene.remove(kwamiObj.anchor.group);
-                const params = kwamiParams[id] || { offset: [0.45, 0.25, 0], scale: 0.35 };
-                const anchor = mindarThree.addAnchor(10);
-                const plane = new THREE.Mesh(
-                    new THREE.PlaneGeometry(1, 1),
-                    new THREE.MeshBasicMaterial({ map: null, transparent: true })
-                );
-                plane.position.set(...params.offset);
-                plane.scale.set(params.scale, params.scale, params.scale);
-                anchor.group.add(plane);
-                kwamiObj = { anchor, plane };
+            function loadTexture(path) {
+                if (!path) return null;
+                return textureLoader.load(path);
             }
 
-            function createDop(id) {
-                // Видаляємо попередній, якщо був
-                if (dopObj && dopObj.anchor) mindarThree.scene.remove(dopObj.anchor.group);
-                const params = dopParams[id] || { anchor: 152, offset: [0, -0.25, 0], scale: 0.3 };
-                const anchor = mindarThree.addAnchor(params.anchor);
-                const plane = new THREE.Mesh(
-                    new THREE.PlaneGeometry(1, 1),
-                    new THREE.MeshBasicMaterial({ map: null, transparent: true })
-                );
-                plane.position.set(...params.offset);
-                plane.scale.set(params.scale, params.scale, params.scale);
-                anchor.group.add(plane);
-                dopObj = { anchor, plane };
-            }
-
-            const selectCharacter = (id) => {
+            function selectCharacter(id) {
                 currentCharacterId = id;
                 const character = characters.find(c => c.id === id);
                 if (!character) return;
@@ -217,39 +196,33 @@
                 // Маска
                 faceMaskMaterial.map = loadTexture(`masks/m${id}.png`);
 
-                // Скелет
-                faceMesh.scale.set(0.9, 1.0, 1.0);
-                faceMesh.position.set(0, 0.1, 0);
-                skeletonMesh.scale.set(0.9, 1.0, 1.0);
-                skeletonMesh.position.set(0, 0.1, 0);
-
                 // Квамі
-                createKwami(id);
-                kwamiObj.plane.material.map = loadTexture(`kwami/k${id}.png`);
+                const kwamiParam = kwamiParams[id] || { offset: [0.45, 0.25, 0], scale: 0.35 };
+                kwamiPlane.position.set(...kwamiParam.offset);
+                kwamiPlane.scale.set(kwamiParam.scale, kwamiParam.scale, kwamiParam.scale);
+                kwamiPlane.material.map = loadTexture(`kwami/k${id}.png`);
 
                 // Доп/прикраса
-                createDop(id);
+                const dopParam = dopParams[id] || { offset: [0, -0.25, 0], scale: 0.3 };
+                dopPlane.position.set(...dopParam.offset);
+                dopPlane.scale.set(dopParam.scale, dopParam.scale, dopParam.scale);
                 const accessoryFile = accessoryFileMap[id];
-                if (accessoryFile) {
-                    dopObj.plane.material.map = loadTexture(`dop/${accessoryFile}`);
-                } else {
-                    dopObj.plane.material.map = null;
-                }
+                dopPlane.material.map = accessoryFile ? loadTexture(`dop/${accessoryFile}`) : null;
 
                 document.querySelectorAll('.char-button').forEach(btn => btn.classList.toggle('active', parseInt(btn.dataset.id) === id));
-                updateVisibility();
-            };
+            }
 
             // Стан видимості
             const visibilityState = { mask: true, kwami: true, accessory: true, skeleton: false };
 
             // Оновлення видимості всіх Mesh'ів
-            const updateVisibility = () => {
-                faceMesh.visible = visibilityState.mask;
-                skeletonMesh.visible = visibilityState.skeleton;
-                if (kwamiObj && kwamiObj.anchor) kwamiObj.anchor.group.visible = visibilityState.kwami;
-                if (dopObj && dopObj.anchor) dopObj.anchor.group.visible = visibilityState.accessory;
-            };
+            function updateVisibility() {
+                faceMesh.visible = !!visibilityState.mask;
+                skeletonMesh.visible = !!visibilityState.skeleton;
+                kwamiPlane.visible = !!visibilityState.kwami;
+                dopPlane.visible = !!visibilityState.accessory;
+            }
+
             // Додаємо кнопки персонажів
             characters.forEach(c => {
                 const btn = document.createElement('button');
@@ -274,14 +247,8 @@
                 btn.className = 'control-button' + (isActive ? ' active' : '');
                 btn.textContent = control.name;
                 btn.onclick = () => {
-                    if (control.key === 'skeleton') {
-                        visibilityState.skeleton = !visibilityState.skeleton;
-                        btn.classList.toggle('active', visibilityState.skeleton);
-                    } else {
-                        visibilityState[control.key] = !visibilityState[control.key];
-                        btn.classList.toggle('active', visibilityState[control.key]);
-                    }
-                    updateVisibility();
+                    visibilityState[control.key] = !visibilityState[control.key];
+                    btn.classList.toggle('active', visibilityState[control.key]);
                 };
                 document.getElementById('controls-container').appendChild(btn);
             });
@@ -296,7 +263,10 @@
 
             await mindarThree.start();
             selectCharacter(1);
-            renderer.setAnimationLoop(() => renderer.render(scene, camera));
+            renderer.setAnimationLoop(() => {
+                updateVisibility(); // Синхронізуємо видимість на кожному кадрі!
+                renderer.render(scene, camera);
+            });
         });
     </script>
 </body>
